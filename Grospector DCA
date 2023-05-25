@@ -1,0 +1,265 @@
+//@version=5
+strategy(title="Grospector DCA V.3", shorttitle="GDCA V.3",precision=7, overlay=true,initial_capital=1000, calc_on_every_tick=true)
+
+//------------------------------ MA ------------------------------
+len = input.int(title="MA Period", defval=365*4)
+strongLen = input.int(title="Strong Period from MA Period", defval=365)
+shortMulti = input.float(title="Short Multi", defval=3)
+sellMulti = input.float(title="Strong Sell Multi", defval=2)
+strongSellMulti = input.float(title="Sell Multi", defval=5)
+strongBuyMulti = input.float(title="Strong Buy Multi", defval=0.8) // 80/100
+longMulti = input.float(title="Long Multi", defval=0.3) // 30/100
+price = input.source(title="Price", defval=close)
+labelSwitch = input.bool(title='Turn on assistive text', defval=true)
+zoneSwitch = input.int(title='Turn on assistive zone',tooltip="1 = all, 2 = chart only, 3 = data only,4 = none", defval=2, options = [1, 2, 3, 4])
+predictFuturePrice = input.bool(title='Turn on predict future price', defval=true)
+DCA = input.int(title="DCA Plan (USD)",defval=5)
+WaitingDCA = input.float(title="Waiting DCA (USD)",defval=0)
+Invested = input.int(title="Invested (USD)",defval=0)
+strategySwitch = input.bool(title='Turn on strategy', defval=true)
+seperateDayOfMonth = input.int(title='Seperate day of month',tooltip="0 = none, 1-31 day", defval=28,minval=0,maxval=31)
+useReserve = input.bool(title='Turn on use reserve', defval=true)
+useDerivative = input.bool(title='Turn on use derivative', defval=true)
+useHalving = input.bool(title='Turn on use halvings', defval=true)
+extendHalfOfHalving = input.int(title='Extend half of halving date', defval=200,minval=0)
+
+StartShortZone = input.int(title="Start Short Zone %",defval=100)
+EndShortZone = input.int(title="Start Short Zone %",defval=0,minval=0)
+StartSellZone = input.int(title="Start Sell Zone %",defval=100,minval=0,maxval=100)
+EndSellZone = input.int(title="End Sell Zone %",defval=0,minval=0,maxval=100)
+StartNormalZone = input.int(title="Start Normal Zone %",defval=0,minval=0,maxval=100)
+EndNormalZone = input.int(title="End Normal Zone %",defval=100,minval=0,maxval=100)
+StartBuyZone = input.int(title="Start Buy Zone %",defval=100,minval=0)
+EndBuyZone = input.int(title="End Buy Zone %",defval=200,minval=0)
+StartLongZone = input.int(title="Start Long Zone %",defval=0,minval=0)
+EndLongZone = input.int(title="End Long Zone %",defval=100,minval=0)
+
+bgcolor(dayofmonth == seperateDayOfMonth ? color.new(color.red, 70) : na,display=seperateDayOfMonth > 0 and seperateDayOfMonth < 32?display.all:display.none)
+bar = barstate.isnew
+last_bar = barstate.islastconfirmedhistory
+
+//Sell
+lenSell = len
+srcSell = price
+offsetSell = 0
+multiSell = sellMulti
+maSell = ta.sma(srcSell*multiSell, lenSell)
+displayZone = zoneSwitch == 1?display.all:zoneSwitch == 2?display.pane:zoneSwitch == 3?display.data_window:zoneSwitch == 4?display.none:display.none
+derivertiveDisplayZone = useDerivative ? displayZone:display.none
+
+//Strong Sell
+lenStrongSell = strongLen
+offsetStrongSell = 0
+multiStrongSell = strongSellMulti
+maStrongSell = ta.sma(maSell*multiStrongSell, lenStrongSell)
+ 
+//Short
+maShort = maStrongSell * shortMulti
+
+//Buy
+lenBuy = len
+srcBuy = price
+offsetBuy = 0
+multiBuy = 1
+maBuy = ta.sma(srcBuy*multiBuy, lenBuy)
+
+//Strong Buy
+lenStrongBuy = strongLen
+offsetStrongBuy = 0
+maStrongBuy = ta.sma(maBuy*strongBuyMulti, lenStrongBuy)
+
+//Long
+maLong = maStrongBuy * longMulti
+
+//index 
+indexDerivertive = 0
+indexDerivertive := maLong > 0 or maShort > 0 ? indexDerivertive[1]+1 : 0
+indexStrong = 0
+indexStrong := maStrongBuy > 0 or maStrongSell > 0 ? indexStrong[1]+1 : 0
+index = 0
+index := maBuy > 0 or maSell > 0 ? index[1]+1 : 0
+
+//channel
+higherSell = maSell*multiSell > maStrongSell ? maSell*multiSell : maStrongSell
+lowerSell = maSell*multiSell < maStrongSell ? maSell*multiSell : maStrongSell
+higherBuy = maBuy > maStrongBuy ? maBuy : maStrongBuy
+lowerBuy = maBuy < maStrongBuy ? maBuy : maStrongBuy
+
+gapShort = (maShort - higherSell)/10
+gapSell = (higherSell - lowerSell)/10
+gapNormal = (lowerSell - higherBuy)/10
+gapBuy = (higherBuy - maStrongBuy)/10
+gapLong = (maStrongBuy - maLong)/10
+
+channelShort1 = maShort - (gapShort*1)
+channelShort2 = maShort - (gapShort*2)
+channelShort3 = maShort - (gapShort*3)
+channelShort4 = maShort - (gapShort*4)
+channelShort5 = maShort - (gapShort*5)
+channelShort6 = maShort - (gapShort*6)
+channelShort7 = maShort - (gapShort*7)
+channelShort8 = maShort - (gapShort*8)
+channelShort9 = maShort - (gapShort*9)
+channelShort10 = maShort - (gapShort*10)
+
+channelSell1 = higherSell - (gapSell*1)
+channelSell2 = higherSell - (gapSell*2)
+channelSell3 = higherSell - (gapSell*3)
+channelSell4 = higherSell - (gapSell*4)
+channelSell5 = higherSell - (gapSell*5)
+channelSell6 = higherSell - (gapSell*6)
+channelSell7 = higherSell - (gapSell*7)
+channelSell8 = higherSell - (gapSell*8)
+channelSell9 = higherSell - (gapSell*9)
+channelSell10 = higherSell - (gapSell*10)
+
+channelNormal1 = lowerSell - (gapNormal*1) 
+channelNormal2 = lowerSell - (gapNormal*2)
+channelNormal3 = lowerSell - (gapNormal*3)
+channelNormal4 = lowerSell - (gapNormal*4)
+channelNormal5 = lowerSell - (gapNormal*5)
+channelNormal6 = lowerSell - (gapNormal*6)
+channelNormal7 = lowerSell - (gapNormal*7)
+channelNormal8 = lowerSell - (gapNormal*8)
+channelNormal9 = lowerSell - (gapNormal*9)
+channelNormal10 = lowerSell - (gapNormal*10)
+
+channelBuy1 = higherBuy - (gapBuy*1)
+channelBuy2 = higherBuy - (gapBuy*2)
+channelBuy3 = higherBuy - (gapBuy*3)
+channelBuy4 = higherBuy - (gapBuy*4)
+channelBuy5 = higherBuy - (gapBuy*5)
+channelBuy6 = higherBuy - (gapBuy*6)
+channelBuy7 = higherBuy - (gapBuy*7)
+channelBuy8 = higherBuy - (gapBuy*8)
+channelBuy9 = higherBuy - (gapBuy*9)
+channelBuy10 = higherBuy - (gapBuy*10)
+
+channelLong1 = maStrongBuy - (gapLong*1)
+channelLong2 = maStrongBuy - (gapLong*2)
+channelLong3 = maStrongBuy - (gapLong*3)
+channelLong4 = maStrongBuy - (gapLong*4)
+channelLong5 = maStrongBuy - (gapLong*5)
+channelLong6 = maStrongBuy - (gapLong*6)
+channelLong7 = maStrongBuy - (gapLong*7)
+channelLong8 = maStrongBuy - (gapLong*8)
+channelLong9 = maStrongBuy - (gapLong*9)
+channelLong10 = maStrongBuy - (gapLong*10)
+
+//---------------------------------------------------------------------------------------------------
+//------------------------------------------ Calculate ----------------------------------------------
+short = price > higherSell 
+sell = price > lowerSell and price < higherSell
+halfBuy = price < lowerSell and price > higherBuy 
+buy = price < higherBuy and price > lowerBuy
+long = price < lowerBuy
+
+percent = 0
+
+percentPeriodOfZoneShort = math.abs(StartShortZone - EndShortZone)/10
+percentPeriodOfZoneSell = math.abs(StartSellZone - EndSellZone)/10
+percentPeriodOfZoneNormal = math.abs(StartNormalZone - EndNormalZone)/10
+percentPeriodOfZoneBuy = math.abs(StartBuyZone - EndBuyZone)/10
+percentPeriodOfZoneLong = math.abs(StartLongZone - EndLongZone)/10
+
+if(short)
+    percent := price > channelShort1 ? StartShortZone-(percentPeriodOfZoneShort*1) :
+              price > channelShort2 ? StartShortZone-(percentPeriodOfZoneShort*2) : 
+              price > channelShort3 ? StartShortZone-(percentPeriodOfZoneShort*3) : 
+              price > channelShort4 ? StartShortZone-(percentPeriodOfZoneShort*4) : 
+              price > channelShort5 ? StartShortZone-(percentPeriodOfZoneShort*5) : 
+              price > channelShort6 ? StartShortZone-(percentPeriodOfZoneShort*6) : 
+              price > channelShort7 ? StartShortZone-(percentPeriodOfZoneShort*7) : 
+              price > channelShort8 ? StartShortZone-(percentPeriodOfZoneShort*8) : 
+              price > channelShort9 ? StartShortZone-(percentPeriodOfZoneShort*9) : 
+              StartShortZone-(percentPeriodOfZoneShort*10)
+else if(sell)
+    percent := price > channelSell1 ? StartSellZone-(percentPeriodOfZoneSell*1) :
+              price > channelSell2 ? StartSellZone-(percentPeriodOfZoneSell*2) : 
+              price > channelSell3 ? StartSellZone-(percentPeriodOfZoneSell*3) : 
+              price > channelSell4 ? StartSellZone-(percentPeriodOfZoneSell*4) : 
+              price > channelSell5 ? StartSellZone-(percentPeriodOfZoneSell*5) : 
+              price > channelSell6 ? StartSellZone-(percentPeriodOfZoneSell*6) : 
+              price > channelSell7 ? StartSellZone-(percentPeriodOfZoneSell*7) : 
+              price > channelSell8 ? StartSellZone-(percentPeriodOfZoneSell*8) : 
+              price > channelSell9 ? StartSellZone-(percentPeriodOfZoneSell*9) : 
+              StartSellZone-(percentPeriodOfZoneSell*10)
+else if(halfBuy)
+    percent := price > channelNormal1 ? StartNormalZone+(percentPeriodOfZoneNormal*1) :
+              price > channelNormal2 ? StartNormalZone+(percentPeriodOfZoneNormal*2) : 
+              price > channelNormal3 ? StartNormalZone+(percentPeriodOfZoneNormal*3) : 
+              price > channelNormal4 ? StartNormalZone+(percentPeriodOfZoneNormal*4) : 
+              price > channelNormal5 ? StartNormalZone+(percentPeriodOfZoneNormal*5) : 
+              price > channelNormal6 ? StartNormalZone+(percentPeriodOfZoneNormal*6) : 
+              price > channelNormal7 ? StartNormalZone+(percentPeriodOfZoneNormal*7) : 
+              price > channelNormal8 ? StartNormalZone+(percentPeriodOfZoneNormal*8) : 
+              price > channelNormal9 ? StartNormalZone+(percentPeriodOfZoneNormal*9) : 
+              StartNormalZone+(percentPeriodOfZoneNormal*10)
+else if(buy)
+    percent := price > channelBuy1 ? StartBuyZone+(percentPeriodOfZoneBuy*1) :
+              price > channelBuy2 ? StartBuyZone+(percentPeriodOfZoneBuy*2) : 
+              price > channelBuy3 ? StartBuyZone+(percentPeriodOfZoneBuy*3) : 
+              price > channelBuy4 ? StartBuyZone+(percentPeriodOfZoneBuy*4) : 
+              price > channelBuy5 ? StartBuyZone+(percentPeriodOfZoneBuy*5) : 
+              price > channelBuy6 ? StartBuyZone+(percentPeriodOfZoneBuy*6) : 
+              price > channelBuy7 ? StartBuyZone+(percentPeriodOfZoneBuy*7) : 
+              price > channelBuy8 ? StartBuyZone+(percentPeriodOfZoneBuy*8) : 
+              price > channelBuy9 ? StartBuyZone+(percentPeriodOfZoneBuy*9) :
+              StartBuyZone+(percentPeriodOfZoneBuy*10)
+else if(long)
+    percent := price > channelLong1 ? StartLongZone+(percentPeriodOfZoneLong*1) :
+              price > channelLong2 ? StartLongZone+(percentPeriodOfZoneLong*2) : 
+              price > channelLong3 ? StartLongZone+(percentPeriodOfZoneLong*3) : 
+              price > channelLong4 ? StartLongZone+(percentPeriodOfZoneLong*4) : 
+              price > channelLong5 ? StartLongZone+(percentPeriodOfZoneLong*5) : 
+              price > channelLong6 ? StartLongZone+(percentPeriodOfZoneLong*6) : 
+              price > channelLong7 ? StartLongZone+(percentPeriodOfZoneLong*7) : 
+              price > channelLong8 ? StartLongZone+(percentPeriodOfZoneLong*8) : 
+              price > channelLong9 ? StartLongZone+(percentPeriodOfZoneLong*9) :
+              StartLongZone+(percentPeriodOfZoneLong*10)
+//---------------------------------------------------------------------------------------------------
+
+//------------------------------------------ Strategy -----------------------------------------------
+qty = 0.0
+shortSize = 0.0
+shortSize := barstate.isfirst ? 0.0:shortSize[1]
+longSize = 0.0
+longSize := barstate.isfirst ? 0.0:longSize[1]
+
+//Calculate QTY and Waiting DCA
+if(buy)
+    qty := amountBuy/price
+    reserve := percent > 100 and useReserve ? reserve * (percent-100)/100 : reserve + (DCA - amountBuy)
+else if(halfBuy)
+    qty := amountBuy/price
+    reserve := percent > 100 and useReserve ? reserve * (percent-100)/100 : reserve + (DCA - amountBuy)
+else if(sell)
+    qty := strategy.position_size > 0 ? strategy.position_size * percent/100 : 0
+else if(short)
+    qty := (DCA/price) * percent/100
+else if(long)
+    qty := (DCA/price) * percent/100
+
+//Order
+if(strategySwitch and qty > 0)
+    if(bar and buy)
+        strategy.order(str.format("DCA Buy {0}% = {1} {2}",percent,qty,syminfo.basecurrency),strategy.long,qty=qty)
+    else if(bar and halfBuy)
+        strategy.order(str.format("DCA Normal {0}% = {1} {2}",percent,qty,syminfo.basecurrency),strategy.long,qty=qty)
+    else if(bar and sell)
+        strategy.order(str.format("DCA Sell {0}% = {1} {2}",percent,qty,syminfo.basecurrency),strategy.short,qty=qty)
+        
+    if(useDerivative)
+        if(bar and short)
+            strategy.order(str.format("DCA Short {0}% = {1} {2}",percent,qty,syminfo.basecurrency),strategy.short,qty=qty)
+        if(bar and long)
+            strategy.order(str.format("DCA Long {0}% = {1} {2}",percent,qty,syminfo.basecurrency),strategy.long,qty=qty)
+            
+//Exit Derivative
+if(strategySwitch and useDerivative)
+    if(bar and halfBuy and shortSize > 0)
+        strategy.order(str.format("Exit Short",percent,shortSize,syminfo.basecurrency),strategy.long,qty=shortSize)
+        shortSize := 0
+    if(bar and halfBuy and longSize > 0)
+        strategy.order(str.format("Exit Long",percent,longSize,syminfo.basecurrency),strategy.short,qty=longSize)
+        longSize := 0
